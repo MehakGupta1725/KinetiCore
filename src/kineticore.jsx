@@ -338,7 +338,7 @@ const GAMES = [
     icon: "🛡",
     difficulty: 4,
     xpReward: 150,
-    active: false,
+    active: true,
   },
   {
     id: "titan-climb",
@@ -792,6 +792,365 @@ function NeonSlicerGame({ poseData }) {
   );
 }
 
+
+// ─────────────────────────────────────────────
+//  SHIELD WALL GAME
+// ─────────────────────────────────────────────
+function ShieldWallGame({ poseData }) {
+  const canvasRef = useRef(null);
+  const gameRef   = useRef({
+    shield:    { x: 310, targetX: 310, side: "none" },
+    lasers:    [],
+    explosions:[],
+    particles: [],
+    health:    100,
+    score:     0,
+    blocked:   0,
+    alive:     true,
+    frameId:   null,
+    tick:      0,
+    warnFlash: 0,
+  });
+
+  // Feed lunge direction into game
+  useEffect(() => {
+    if (!poseData) return;
+    const g = gameRef.current;
+    const dir = poseData.lungeDir;
+    g.shield.side = dir;
+    if      (dir === "left")  g.shield.targetX = 130;
+    else if (dir === "right") g.shield.targetX = 490;
+    else                      g.shield.targetX = 310;
+  }, [poseData]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const W = canvas.width, H = canvas.height;
+    const g = gameRef.current;
+    const SHIELD_Y = H - 80;
+    const SHIELD_W = 100, SHIELD_H = 140;
+
+    function spawnLaser() {
+      const side  = Math.random() > 0.5 ? "left" : "right";
+      const lanes = [120, 200, 310, 420, 500];
+      const laneX = lanes[Math.floor(Math.random() * lanes.length)];
+      g.lasers.push({
+        x:      laneX,
+        y:      -30,
+        targetX:laneX,
+        speed:  2.8 + Math.random() * 2.5,
+        width:  8 + Math.random() * 6,
+        side,
+        color:  side === "left" ? "#ef4444" : "#a855f7",
+        phase:  Math.random() * Math.PI * 2,
+        warned: false,
+      });
+    }
+
+    function spawnExplosion(x, y, color, blocked) {
+      for (let i = 0; i < 20; i++) {
+        const angle = (Math.PI * 2 / 20) * i + Math.random() * 0.3;
+        const speed = 2 + Math.random() * 5;
+        g.particles.push({
+          x, y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: 1,
+          color: blocked ? "#f97316" : color,
+          size: blocked ? 3 + Math.random() * 4 : 2 + Math.random() * 3,
+        });
+      }
+      g.explosions.push({ x, y, r: 0, maxR: blocked ? 60 : 40, color, blocked });
+    }
+
+    function drawShield(x, y) {
+      const active = g.shield.side !== "none";
+      ctx.save();
+      ctx.translate(x, y);
+
+      // Shield glow
+      const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, SHIELD_W * 0.7);
+      grd.addColorStop(0, active ? "#f9731644" : "#00fff722");
+      grd.addColorStop(1, "transparent");
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, SHIELD_W * 0.7, SHIELD_H * 0.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Shield body (hexagonal)
+      ctx.beginPath();
+      const sides = 6;
+      for (let i = 0; i < sides; i++) {
+        const angle = (Math.PI * 2 / sides) * i - Math.PI / 6;
+        const sx = Math.cos(angle) * (SHIELD_W * 0.45);
+        const sy = Math.sin(angle) * (SHIELD_H * 0.5);
+        i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
+      }
+      ctx.closePath();
+
+      const col = active ? "#f97316" : "#00fff7";
+      ctx.strokeStyle = col;
+      ctx.lineWidth   = active ? 3 : 2;
+      ctx.shadowBlur  = active ? 24 : 12;
+      ctx.shadowColor = col;
+      ctx.stroke();
+
+      // Shield fill
+      ctx.fillStyle = active ? "#f9731611" : "#00fff708";
+      ctx.fill();
+
+      // Inner energy lines
+      ctx.shadowBlur = 0;
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * 16, -SHIELD_H * 0.35);
+        ctx.lineTo(i * 16,  SHIELD_H * 0.35);
+        ctx.strokeStyle = active ? "#f9731644" : "#00fff733";
+        ctx.lineWidth   = 1;
+        ctx.stroke();
+      }
+
+      // Direction indicator
+      if (g.shield.side !== "none") {
+        ctx.fillStyle   = "#f97316";
+        ctx.font        = "bold 11px 'Orbitron',monospace";
+        ctx.shadowBlur  = 8;
+        ctx.shadowColor = "#f97316";
+        ctx.textAlign   = "center";
+        ctx.fillText(g.shield.side === "left" ? "◀ BLOCKING" : "BLOCKING ▶", 0, -SHIELD_H * 0.55);
+      }
+
+      ctx.restore();
+    }
+
+    function drawLaser(laser) {
+      const wobble = Math.sin(laser.phase + laser.y * 0.05) * 3;
+      ctx.save();
+
+      // Warning beam (faint preview)
+      if (laser.y < H * 0.4) {
+        ctx.strokeStyle = laser.color + "33";
+        ctx.lineWidth   = 1;
+        ctx.setLineDash([4, 8]);
+        ctx.beginPath();
+        ctx.moveTo(laser.x + wobble, laser.y);
+        ctx.lineTo(laser.x + wobble, H - 80);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // Laser bolt
+      const grad = ctx.createLinearGradient(0, laser.y - 30, 0, laser.y + 10);
+      grad.addColorStop(0, "transparent");
+      grad.addColorStop(0.5, laser.color);
+      grad.addColorStop(1,   "#ffffff");
+      ctx.strokeStyle = grad;
+      ctx.lineWidth   = laser.width;
+      ctx.shadowBlur  = 16;
+      ctx.shadowColor = laser.color;
+      ctx.lineCap     = "round";
+      ctx.beginPath();
+      ctx.moveTo(laser.x + wobble, laser.y - 28);
+      ctx.lineTo(laser.x + wobble, laser.y + 6);
+      ctx.stroke();
+
+      // Bright core
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth   = laser.width * 0.3;
+      ctx.shadowBlur  = 6;
+      ctx.beginPath();
+      ctx.moveTo(laser.x + wobble, laser.y - 20);
+      ctx.lineTo(laser.x + wobble, laser.y + 4);
+      ctx.stroke();
+
+      ctx.restore();
+      laser.phase += 0.15;
+    }
+
+    function drawHUD() {
+      // Health bar
+      const barW = 160, barH = 8;
+      const barX = W / 2 - barW / 2, barY = 12;
+      ctx.fillStyle = "#0a0a19";
+      ctx.fillRect(barX, barY, barW, barH);
+      const hpColor = g.health > 60 ? "#22c55e" : g.health > 30 ? "#facc15" : "#ef4444";
+      ctx.fillStyle   = hpColor;
+      ctx.shadowBlur  = 8;
+      ctx.shadowColor = hpColor;
+      ctx.fillRect(barX, barY, barW * (g.health / 100), barH);
+      ctx.shadowBlur  = 0;
+      ctx.strokeStyle = "#1e2040";
+      ctx.lineWidth   = 1;
+      ctx.strokeRect(barX, barY, barW, barH);
+
+      ctx.fillStyle = "#ffffff88";
+      ctx.font      = "9px 'Share Tech Mono',monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(`SHIELD ${g.health}%`, W / 2, barY + barH + 13);
+      ctx.textAlign = "left";
+
+      // Score
+      ctx.fillStyle   = "#f97316";
+      ctx.font        = "bold 12px 'Orbitron',monospace";
+      ctx.shadowBlur  = 8;
+      ctx.shadowColor = "#f97316";
+      ctx.fillText(`BLOCKED: ${g.blocked}`, 14, 24);
+
+      // Lunge prompt
+      ctx.fillStyle  = "#ffffff22";
+      ctx.font       = "10px 'Share Tech Mono',monospace";
+      ctx.shadowBlur = 0;
+      ctx.textAlign  = "center";
+      ctx.fillText("LUNGE LEFT / RIGHT TO MOVE YOUR SHIELD", W / 2, H - 10);
+      ctx.textAlign  = "left";
+    }
+
+    function loop() {
+      g.tick++;
+      ctx.clearRect(0, 0, W, H);
+
+      // Background
+      ctx.fillStyle = "#060410";
+      ctx.fillRect(0, 0, W, H);
+
+      // Vertical lane lines (subtle)
+      [120, 200, 310, 420, 500].forEach(lx => {
+        ctx.strokeStyle = "#f9731606";
+        ctx.lineWidth   = 1;
+        ctx.beginPath(); ctx.moveTo(lx, 0); ctx.lineTo(lx, H); ctx.stroke();
+      });
+
+      // Horizontal grid
+      ctx.strokeStyle = "#a855f705";
+      ctx.lineWidth   = 1;
+      for (let gy = 0; gy < H; gy += 40) {
+        ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+      }
+
+      // Enemy emitters at top
+      [120, 200, 310, 420, 500].forEach(lx => {
+        ctx.beginPath();
+        ctx.arc(lx, 18, 7, 0, Math.PI * 2);
+        ctx.fillStyle   = "#ef444422";
+        ctx.shadowBlur  = 10;
+        ctx.shadowColor = "#ef4444";
+        ctx.fill();
+        ctx.strokeStyle = "#ef444466";
+        ctx.lineWidth   = 1;
+        ctx.stroke();
+        ctx.shadowBlur  = 0;
+      });
+
+      // Spawn lasers
+      if (g.tick % 70 === 0 && g.alive) spawnLaser();
+
+      // Smooth shield movement
+      g.shield.x += (g.shield.targetX - g.shield.x) * 0.12;
+
+      if (g.alive) {
+        // Update & draw lasers
+        g.lasers = g.lasers.filter(laser => {
+          laser.y += laser.speed;
+          const wobble = Math.sin(laser.phase) * 3;
+
+          // Check if laser reaches shield zone
+          if (laser.y >= SHIELD_Y - SHIELD_H * 0.5 && laser.y < SHIELD_Y + 20) {
+            const dx = Math.abs((laser.x + wobble) - g.shield.x);
+            const blocked = dx < SHIELD_W * 0.5;
+
+            if (blocked) {
+              spawnExplosion(laser.x + wobble, SHIELD_Y - SHIELD_H * 0.2, laser.color, true);
+              g.blocked++;
+              g.warnFlash = 0;
+              return false;
+            }
+          }
+
+          // Laser passed the shield
+          if (laser.y > H) {
+            g.health = Math.max(0, g.health - 12);
+            g.warnFlash = 8;
+            spawnExplosion(laser.x, H - 20, laser.color, false);
+            if (g.health <= 0) g.alive = false;
+            return false;
+          }
+
+          drawLaser(laser);
+          return true;
+        });
+
+        // Draw shield
+        drawShield(g.shield.x, SHIELD_Y);
+      } else {
+        // Game over
+        ctx.fillStyle   = "#ef4444";
+        ctx.font        = "bold 26px 'Orbitron',monospace";
+        ctx.shadowBlur  = 20; ctx.shadowColor = "#ef4444";
+        ctx.textAlign   = "center";
+        ctx.fillText("SHIELD DESTROYED", W / 2, H / 2 - 16);
+        ctx.font        = "13px 'Share Tech Mono',monospace";
+        ctx.fillStyle   = "#ffffff88";
+        ctx.fillText(`SHOTS BLOCKED: ${g.blocked}`, W / 2, H / 2 + 14);
+        ctx.textAlign   = "left";
+        setTimeout(() => {
+          g.alive = true; g.health = 100; g.blocked = 0;
+          g.lasers = []; g.score = 0; g.shield.x = 310;
+        }, 2500);
+      }
+
+      // Explosions
+      g.explosions = g.explosions.filter(ex => {
+        ex.r += ex.blocked ? 5 : 3;
+        ctx.beginPath();
+        ctx.arc(ex.x, ex.y, ex.r, 0, Math.PI * 2);
+        ctx.strokeStyle = ex.color;
+        ctx.lineWidth   = 2;
+        ctx.globalAlpha = Math.max(0, 1 - ex.r / ex.maxR);
+        ctx.shadowBlur  = 10; ctx.shadowColor = ex.color;
+        ctx.stroke();
+        ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+        return ex.r < ex.maxR;
+      });
+
+      // Particles
+      g.particles = g.particles.filter(p => {
+        p.x += p.vx; p.y += p.vy; p.vx *= 0.94; p.vy *= 0.94;
+        p.life -= 0.03;
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle   = p.color;
+        ctx.shadowBlur  = 6; ctx.shadowColor = p.color;
+        ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+        ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+        return p.life > 0;
+      });
+
+      // Damage flash
+      if (g.warnFlash > 0) {
+        ctx.fillStyle   = `rgba(239,68,68,${g.warnFlash * 0.015})`;
+        ctx.fillRect(0, 0, W, H);
+        g.warnFlash--;
+      }
+
+      drawHUD();
+      g.frameId = requestAnimationFrame(loop);
+    }
+
+    g.frameId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(g.frameId);
+  }, []);
+
+  return (
+    <div style={{ position: "relative" }}>
+      <canvas ref={canvasRef} width={620} height={300}
+        style={{ borderRadius:10, border:"1px solid #f9731633", display:"block", boxShadow:"0 0 28px #f9731618" }}
+      />
+      {!poseData && <GameOverlay color="#f97316" message="SHIELD WALL" hint="python pose_server.py" />}
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────
 //  SHARED GAME OVERLAY (no pose server)
 // ─────────────────────────────────────────────
@@ -868,8 +1227,9 @@ function AnimatedGrid() {
 //  LIVE POSE STATS PANEL
 // ─────────────────────────────────────────────
 function LiveStatsPanel({ poseData, connected, activeGame }) {
-  const isNeonSlicer = activeGame === "neon-slicer";
-  const accentColor  = isNeonSlicer ? "#ff00aa" : "#00fff7";
+  const isNeonSlicer  = activeGame === "neon-slicer";
+  const isShieldWall  = activeGame === "shield-wall";
+  const accentColor  = isNeonSlicer ? "#ff00aa" : isShieldWall ? "#f97316" : "#00fff7";
 
   return (
     <div style={{
@@ -935,6 +1295,36 @@ function LiveStatsPanel({ poseData, connected, activeGame }) {
                   <div style={{ fontFamily:"'Orbitron',monospace", fontSize:13, color:item.color, marginTop:4, textShadow:`0 0 8px ${item.color}` }}>{item.value}</div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Shield Wall stats */}
+          {isShieldWall && (
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:8 }}>
+                {[
+                  { label:"LUNGES",   value: poseData.lungeCount ?? 0,    color:"#f97316" },
+                  { label:"SPREAD",   value: poseData.hipSpread  ?? 0,    color:"#facc15" },
+                ].map(item => (
+                  <div key={item.label} style={{ background:"#0a0a19", borderRadius:6, padding:"10px", textAlign:"center" }}>
+                    <div style={{ fontFamily:"'Share Tech Mono',monospace", fontSize:9, color:"#444466", letterSpacing:1 }}>{item.label}</div>
+                    <div style={{ fontFamily:"'Orbitron',monospace", fontSize:16, color:item.color, marginTop:3, textShadow:`0 0 8px ${item.color}` }}>{item.value}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{
+                padding:"8px 12px", borderRadius:6, textAlign:"center",
+                background: poseData.lungeDir === "none" ? "#0a0a19" : "#f9731611",
+                border:`1px solid ${poseData.lungeDir === "none" ? "#1e2040" : "#f9731644"}`,
+                fontFamily:"'Orbitron',monospace", fontSize:12,
+                color: poseData.lungeDir === "none" ? "#333355" : "#f97316",
+                textShadow: poseData.lungeDir !== "none" ? "0 0 8px #f97316" : "none",
+                transition:"all 0.2s",
+              }}>
+                {poseData.lungeDir === "left"  ? "◀ LUNGING LEFT"  :
+                 poseData.lungeDir === "right" ? "LUNGING RIGHT ▶" :
+                 "STAND CENTER"}
+              </div>
             </div>
           )}
         </>
@@ -1290,7 +1680,13 @@ export default function KinetiCore({ user = {}, onLogout }) {
                   <NeonSlicerGame poseData={poseData} />
                 </div>
               )}
-              {!["gravity-well","neon-slicer"].includes(activeGame) && activeGame && (
+              {activeGame === "shield-wall" && (
+                <div>
+                  <div style={{ fontFamily:"'Share Tech Mono',monospace", fontSize:10, color:"#444466", letterSpacing:2, marginBottom:8 }}>▶ SHIELD WALL — LIVE GAMEPLAY</div>
+                  <ShieldWallGame poseData={poseData} />
+                </div>
+              )}
+              {!["gravity-well","neon-slicer","shield-wall"].includes(activeGame) && activeGame && (
                 <div style={{ background:"rgba(10,10,25,0.8)", border:"1px solid #1e2040", borderRadius:10, height:300, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:8 }}>
                   <div style={{ fontSize:36 }}>🔒</div>
                   <div style={{ fontFamily:"'Orbitron',monospace", fontSize:13, color:"#333355", letterSpacing:2 }}>COMING SOON</div>

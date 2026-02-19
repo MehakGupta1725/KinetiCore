@@ -39,10 +39,25 @@ state = {
 
     # Shared
     "totalSliced": 0,
+
+    # Shield Wall (lunges)
+    "lungeDir":      "none",   # "left" | "right" | "none"
+    "lungeCount":    0,
+    "lastLungeDir":  "none",
+    "leftAnkle":  {"x": 0.3, "visible": False},
+    "rightAnkle": {"x": 0.7, "visible": False},
+    "hipSpread":  0.0,
 }
 
 SQUAT_THRESHOLD = 0.15
 RISE_THRESHOLD  = 0.22
+
+# Shield Wall lunge thresholds
+# We measure horizontal spread between left hip (23) and right hip (24)
+# vs left ankle (27) and right ankle (28)
+# A lunge spreads one ankle far from the hip midpoint
+LUNGE_SPREAD_THRESHOLD = 0.18   # ankle.x far from center = lunging
+LUNGE_RESET_THRESHOLD  = 0.10   # back to center = reset
 
 latest_landmarks = None
 
@@ -138,6 +153,45 @@ def process_landmarks(landmarks):
         "visible": rw.visibility > 0.4,
     }
 
+    # ── Lunge detection (Shield Wall) ───────────────────────
+    # Landmarks: 23=LEFT_HIP, 24=RIGHT_HIP, 27=LEFT_ANKLE, 28=RIGHT_ANKLE
+    lhip   = landmarks[23]
+    rhip   = landmarks[24]
+    lankle = landmarks[27]
+    rankle = landmarks[28]
+
+    hip_cx = (lhip.x + rhip.x) / 2   # horizontal center of hips (mirrored)
+    # Mirror x for selfie view
+    l_ax   = 1 - lankle.x
+    r_ax   = 1 - rankle.x
+    h_cx_m = 1 - hip_cx
+
+    l_spread = h_cx_m - l_ax   # positive = left ankle stepped left of center
+    r_spread = r_ax - h_cx_m   # positive = right ankle stepped right of center
+
+    state["leftAnkle"]  = {"x": round(l_ax, 3), "visible": lankle.visibility > 0.4}
+    state["rightAnkle"] = {"x": round(r_ax, 3), "visible": rankle.visibility > 0.4}
+    state["hipSpread"]  = round(max(l_spread, r_spread), 3)
+
+    # Detect which direction the lunge is
+    prev_dir = state["lungeDir"]
+
+    if l_spread > LUNGE_SPREAD_THRESHOLD and l_spread > r_spread:
+        new_dir = "left"
+    elif r_spread > LUNGE_SPREAD_THRESHOLD and r_spread > l_spread:
+        new_dir = "right"
+    else:
+        new_dir = "none"
+
+    # Count a complete lunge: went to a direction, now back to none
+    if prev_dir != "none" and new_dir == "none":
+        state["lungeCount"] += 1
+        state["xp"]         += 150
+        state["feedback"]    = f"🛡 BLOCKED! {state['lungeCount']} LUNGES — {state['xp']} XP"
+        state["lastLungeDir"] = prev_dir
+
+    state["lungeDir"] = new_dir
+
 # ─────────────────────────────────────────────────────────────
 #  WebSocket handler
 # ─────────────────────────────────────────────────────────────
@@ -179,12 +233,22 @@ async def handler(websocket):
                 rh = state["rightHand"]
                 cv2.putText(
                     frame,
-                    f"SQUATS:{state['squatCount']}  XP:{state['xp']}  "
-                    f"L({lh['x']:.2f},{lh['y']:.2f})  R({rh['x']:.2f},{rh['y']:.2f})",
+                    f"SQ:{state['squatCount']} LUNGES:{state['lungeCount']} XP:{state['xp']} "
+                    f"LUNGE:{state['lungeDir'].upper()} SPREAD:{state['hipSpread']:.2f}",
                     (10, 25),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45,
                     (0,255,247), 1, cv2.LINE_AA
                 )
+
+                # Draw ankle highlights for lunge feedback
+                for idx, color in [(27, (255,165,0)), (28, (0,165,255))]:
+                    if idx < len(latest_landmarks):
+                        lm = latest_landmarks[idx]
+                        if lm.visibility > 0.4:
+                            cx, cy = int(lm.x * w), int(lm.y * h)
+                            c = (0,200,255) if state["lungeDir"] != "none" else color
+                            cv2.circle(frame, (cx,cy), 16, c, 2)
+                            cv2.circle(frame, (cx,cy), 5,  c, -1)
 
                 cv2.imshow("KinetiCore — Pose Detection  (Q to quit)", frame)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -206,7 +270,7 @@ async def handler(websocket):
 async def main():
     print("🚀 KinetiCore Pose Server v2 starting...")
     print("   WebSocket : ws://localhost:8765")
-    print("   Tracking  : Squats (Gravity Well) + Hands (Neon Slicer)")
+    print("   Tracking  : Squats (Gravity Well) + Hands (Neon Slicer) + Lunges (Shield Wall)")
     print("   Press Q in the webcam window to stop.\n")
     async with websockets.serve(handler, "localhost", 8765):
         await asyncio.Future()
