@@ -34,10 +34,67 @@ const THEMES = {
   },
 };
 
+
+// ─────────────────────────────────────────────
+//  PROFILE HELPERS (localStorage)
+// ─────────────────────────────────────────────
+const XP_PER_LEVEL = 500;
+
+function loadProfile(username) {
+  if (!username) return defaultProfile();
+  const key = `kc_profile_${username.toLowerCase()}`;
+  const saved = localStorage.getItem(key);
+  if (saved) return JSON.parse(saved);
+  return defaultProfile();
+}
+
+function saveProfile(username, profile) {
+  if (!username) return;
+  const key = `kc_profile_${username.toLowerCase()}`;
+  localStorage.setItem(key, JSON.stringify(profile));
+}
+
+function defaultProfile() {
+  return {
+    totalXp:      0,
+    level:        1,
+    streak:       0,
+    lastPlayedDate: null,
+    rank:         "—",
+    gamesPlayed:  0,
+  };
+}
+
+function calcLevel(totalXp) {
+  return Math.floor(totalXp / XP_PER_LEVEL) + 1;
+}
+
+function updateStreak(profile) {
+  const today = new Date().toDateString();
+  if (profile.lastPlayedDate === today) return profile; // already played today
+  const yesterday = new Date(Date.now() - 86400000).toDateString();
+  const newStreak = profile.lastPlayedDate === yesterday
+    ? profile.streak + 1   // consecutive day
+    : 1;                   // streak reset
+  return { ...profile, streak: newStreak, lastPlayedDate: today };
+}
+
+function addXpToProfile(profile, xpGained) {
+  if (xpGained <= 0) return profile;
+  const updated = updateStreak(profile);
+  const totalXp = updated.totalXp + xpGained;
+  return {
+    ...updated,
+    totalXp,
+    level: calcLevel(totalXp),
+    gamesPlayed: updated.gamesPlayed + 1,
+  };
+}
+
 // ─────────────────────────────────────────────
 //  AVATAR PANEL (slide-in from right)
 // ─────────────────────────────────────────────
-function AvatarPanel({ user, theme, setTheme, show, setShow, onLogout, connected, wsStatus }) {
+function AvatarPanel({ user, theme, setTheme, show, setShow, onLogout, connected, wsStatus, profile = defaultProfile() }) {
   const t = THEMES[theme];
   const [confirmLogout, setConfirmLogout] = useState(false);
 
@@ -98,7 +155,7 @@ function AvatarPanel({ user, theme, setTheme, show, setShow, onLogout, connected
             </div>
             {/* Badges */}
             <div style={{ display:"flex", gap:6, justifyContent:"center", marginTop:10, flexWrap:"wrap" }}>
-              {["LVL 7","3,240 XP","5-DAY STREAK"].map(b => (
+              {[`LVL ${profile?.level ?? 1}`, `${(profile?.totalXp ?? 0).toLocaleString()} XP`, profile?.streak > 0 ? `${profile.streak}-DAY STREAK` : "NEW PILOT"].map(b => (
                 <span key={b} style={{
                   fontFamily:"'Share Tech Mono',monospace", fontSize:9,
                   color:t.primary, border:`1px solid ${t.primary}44`,
@@ -895,29 +952,52 @@ function LiveStatsPanel({ poseData, connected, activeGame }) {
 // ─────────────────────────────────────────────
 //  XP BAR
 // ─────────────────────────────────────────────
-function XPBar({ xp = 0, baseXp = 3240 }) {
-  const total = baseXp + xp;
-  const level = Math.floor(total / 500) + 1;
-  const pct   = ((total % 500) / 500) * 100;
+function XPBar({ profile = defaultProfile(), sessionXp = 0 }) {
+  const { totalXp, level, streak } = profile;
+  const xpIntoLevel = totalXp % XP_PER_LEVEL;
+  const pct = totalXp === 0 ? 0 : (xpIntoLevel / XP_PER_LEVEL) * 100;
+  const xpToNext = XP_PER_LEVEL - xpIntoLevel;
+
+  const streakLabel = streak === 0 ? "NONE"
+    : streak === 1 ? "1 DAY"
+    : `${streak} DAYS`;
+
+  const streakAura = streak >= 14 ? " 🌟"
+    : streak >= 7  ? " 💜"
+    : streak >= 3  ? " 🔥"
+    : "";
+
   return (
     <div style={{ background:"rgba(10,10,25,0.9)", border:"1px solid #1e2040", borderRadius:10, padding:"16px 20px" }}>
-      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:7 }}>
-        <span style={{ fontFamily:"'Orbitron',monospace", fontSize:11, color:"var(--secondary,#a855f7)", letterSpacing:2 }}>PILOT LVL {level}</span>
-        <span style={{ fontFamily:"'Share Tech Mono',monospace", fontSize:10, color:"#444466" }}>{total.toLocaleString()} XP</span>
+      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+        <span style={{ fontFamily:"'Orbitron',monospace", fontSize:11, color:"var(--secondary,#a855f7)", letterSpacing:2 }}>
+          PILOT LVL {level}
+        </span>
+        <span style={{ fontFamily:"'Share Tech Mono',monospace", fontSize:10, color:"#444466" }}>
+          {totalXp.toLocaleString()} XP
+        </span>
+      </div>
+      <div style={{ fontFamily:"'Share Tech Mono',monospace", fontSize:9, color:"#333355", marginBottom:6 }}>
+        {totalXp === 0 ? "PLAY GAMES TO EARN XP" : `${xpToNext} XP TO LEVEL ${level + 1}`}
       </div>
       <div style={{ background:"#0a0a19", borderRadius:4, height:7, overflow:"hidden" }}>
-        <div style={{ width:`${pct}%`, height:"100%", background:"linear-gradient(90deg,#a855f7,#00fff7)", borderRadius:4, transition:"width 0.6s ease" }} />
+        <div style={{
+          width:`${pct}%`, height:"100%",
+          background:"linear-gradient(90deg,var(--secondary,#a855f7),var(--primary,#00fff7))",
+          borderRadius:4, transition:"width 0.8s ease",
+          minWidth: totalXp > 0 ? 4 : 0,
+        }} />
       </div>
       <div style={{ display:"flex", gap:10, marginTop:10 }}>
         {[
-          { label:"SESSION XP", value:`+${xp}`, icon:"⚡" },
-          { label:"STREAK",     value:"5 DAYS", icon:"🔥" },
-          { label:"RANK",       value:"#142",   icon:"🏆" },
+          { label:"SESSION XP", value: sessionXp > 0 ? `+${sessionXp}` : "0",      icon:"⚡" },
+          { label:"STREAK",     value: streakLabel + streakAura,                    icon:"🔥" },
+          { label:"TOTAL XP",   value: totalXp > 999 ? `${(totalXp/1000).toFixed(1)}K` : `${totalXp}`, icon:"🏆" },
         ].map(item => (
           <div key={item.label} style={{ flex:1, textAlign:"center" }}>
             <div style={{ fontSize:13 }}>{item.icon}</div>
             <div style={{ fontFamily:"'Share Tech Mono',monospace", fontSize:9, color:"#444466", marginTop:2 }}>{item.label}</div>
-            <div style={{ fontFamily:"'Orbitron',monospace", fontSize:11, color:"var(--primary,#00fff7)", marginTop:1 }}>{item.value}</div>
+            <div style={{ fontFamily:"'Orbitron',monospace", fontSize:10, color:"var(--primary,#00fff7)", marginTop:1, letterSpacing:1 }}>{item.value}</div>
           </div>
         ))}
       </div>
@@ -1039,6 +1119,8 @@ export default function KinetiCore({ user = {}, onLogout }) {
   const [wsStatus,   setWsStatus]   = useState("AWAITING POSE SERVER");
   const [theme,      setTheme]      = useState("cyan");
   const [showPanel,  setShowPanel]  = useState(false);
+  const [profile,    setProfile]    = useState(() => loadProfile(user?.username));
+  const lastSavedXp = useRef(0);
 
   // ── Global styles ────────────────────────────
   useEffect(() => {
@@ -1104,7 +1186,20 @@ export default function KinetiCore({ user = {}, onLogout }) {
     return () => { clearTimeout(reconnectTimer); if (ws) ws.close(); };
   }, []);
 
-  const currentXp = poseData?.xp ?? 0;
+  const sessionXp = poseData?.xp ?? 0;
+
+  // Whenever sessionXp increases, update and save the profile
+  useEffect(() => {
+    const gained = sessionXp - lastSavedXp.current;
+    if (gained > 0) {
+      lastSavedXp.current = sessionXp;
+      setProfile(prev => {
+        const updated = addXpToProfile(prev, gained);
+        saveProfile(user?.username, updated);
+        return updated;
+      });
+    }
+  }, [sessionXp]);
 
   return (
     <div style={{ minHeight:"100vh", background:"#05050f", color:"#e0e0ff", fontFamily:"'Share Tech Mono',monospace", position:"relative", overflowX:"hidden" }}>
@@ -1120,6 +1215,7 @@ export default function KinetiCore({ user = {}, onLogout }) {
           user={user} theme={theme} setTheme={setTheme}
           show={showPanel} setShow={setShowPanel} onLogout={onLogout}
           connected={connected} wsStatus={wsStatus}
+          profile={profile}
         />
         <header style={{ padding:"28px 0 20px", borderBottom:"1px solid #0e0e22" }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:16 }}>
@@ -1219,7 +1315,7 @@ export default function KinetiCore({ user = {}, onLogout }) {
             {/* Sidebar */}
             <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
               <LiveStatsPanel poseData={poseData} connected={connected} activeGame={activeGame} />
-              <XPBar xp={currentXp} />
+              <XPBar profile={profile} sessionXp={sessionXp} />
 
               {/* Skill Tree */}
               <div style={{ background:"rgba(10,10,25,0.9)", border:"1px solid #1e2040", borderRadius:10, padding:"16px 20px" }}>
@@ -1227,7 +1323,7 @@ export default function KinetiCore({ user = {}, onLogout }) {
                 {[
                   { name:"HYPER DASH", unlocked:true,  color:"#00fff7", req:"ACTIVE"   },
                   { name:"NEON TRAIL", unlocked:true,  color:"#a855f7", req:"ACTIVE"   },
-                  { name:"GHOST MODE", unlocked:false, color:"#22c55e", req:"LVL 10"   },
+                  { name:"GHOST MODE", unlocked:(profile?.level ?? 1) >= 10, color:"#22c55e", req:"LVL 10"   },
                   { name:"TITAN FORM", unlocked:false, color:"#f97316", req:"2,000 XP" },
                 ].map((skill,i,arr) => (
                   <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"7px 0", borderBottom: i<arr.length-1?"1px solid #0e0e22":"none", opacity: skill.unlocked?1:0.35 }}>
