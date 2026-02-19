@@ -4,12 +4,14 @@ import AuthPage from './AuthPage';
 import KinetiCore from './kineticore';
 
 function App() {
-  const [loggedIn, setLoggedIn] = useState(false);
+  const [user, setUser] = useState(null); // null = not logged in
 
-  // Show auth page first, then main app after login
-  return loggedIn
-    ? <KinetiCore />
-    : <AuthPage onEnter={() => setLoggedIn(true)} />;
+  const handleEnter = (userData) => setUser(userData);
+  const handleLogout = () => setUser(null);
+
+  return user
+    ? <KinetiCore user={user} onLogout={handleLogout} />
+    : <AuthPage onEnter={handleEnter} />;
 }
 
 const root = ReactDOM.createRoot(document.getElementById('root'));

@@ -1,6 +1,249 @@
 import { useState, useEffect, useRef } from "react";
 
 // ─────────────────────────────────────────────
+//  THEMES
+// ─────────────────────────────────────────────
+const THEMES = {
+  cyan: {
+    primary:  "#00fff7",
+    secondary:"#a855f7",
+    accent:   "#ff00aa",
+    gradient: "linear-gradient(90deg,#00fff7,#a855f7,#ff00aa)",
+    label:    "CYBER CYAN",
+  },
+  magenta: {
+    primary:  "#ff00aa",
+    secondary:"#a855f7",
+    accent:   "#facc15",
+    gradient: "linear-gradient(90deg,#ff00aa,#a855f7,#facc15)",
+    label:    "NEON MAGENTA",
+  },
+  green: {
+    primary:  "#22c55e",
+    secondary:"#00fff7",
+    accent:   "#a855f7",
+    gradient: "linear-gradient(90deg,#22c55e,#00fff7,#a855f7)",
+    label:    "MATRIX GREEN",
+  },
+  orange: {
+    primary:  "#f97316",
+    secondary:"#facc15",
+    accent:   "#ef4444",
+    gradient: "linear-gradient(90deg,#f97316,#facc15,#ef4444)",
+    label:    "INFERNO ORANGE",
+  },
+};
+
+// ─────────────────────────────────────────────
+//  AVATAR PANEL (slide-in from right)
+// ─────────────────────────────────────────────
+function AvatarPanel({ user, theme, setTheme, show, setShow, onLogout, connected, wsStatus }) {
+  const t = THEMES[theme];
+  const [confirmLogout, setConfirmLogout] = useState(false);
+
+  if (!show) return null;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div onClick={() => setShow(false)} style={{
+        position:"fixed", inset:0, zIndex:100, background:"rgba(0,0,0,0.4)",
+        backdropFilter:"blur(2px)",
+      }} />
+
+      {/* Panel */}
+      <div style={{
+        position:"fixed", top:0, right:0, bottom:0, width:280,
+        zIndex:101,
+        background:"rgba(6,6,18,0.98)",
+        borderLeft:`1px solid ${t.primary}33`,
+        boxShadow:`-20px 0 60px rgba(0,0,0,0.6), inset 0 0 30px ${t.primary}05`,
+        animation:"panel-in 0.25s cubic-bezier(0.16,1,0.3,1)",
+        display:"flex", flexDirection:"column",
+        overflow:"hidden",
+      }}>
+
+        {/* Top accent bar */}
+        <div style={{ height:3, background:`linear-gradient(90deg,transparent,${t.primary},${t.secondary})` }} />
+
+        {/* Close button */}
+        <div onClick={() => setShow(false)} style={{
+          position:"absolute", top:14, right:14,
+          width:28, height:28, borderRadius:"50%",
+          border:"1px solid #1e2040",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          cursor:"pointer", color:"#444466", fontSize:14,
+          fontFamily:"monospace",
+        }}>✕</div>
+
+        <div style={{ padding:"24px 20px", flex:1, overflowY:"auto" }}>
+
+          {/* Avatar + name */}
+          <div style={{ textAlign:"center", marginBottom:24, paddingTop:8 }}>
+            <div style={{
+              width:70, height:70, borderRadius:"50%",
+              border:`2px solid ${t.primary}88`,
+              background:`${t.primary}11`,
+              display:"flex", alignItems:"center", justifyContent:"center",
+              fontSize:34, margin:"0 auto 12px",
+              boxShadow:`0 0 24px ${t.primary}44`,
+            }}>
+              {user.avatar || "⚡"}
+            </div>
+            <div style={{ fontFamily:"'Orbitron',monospace", fontSize:14, fontWeight:700, color:t.primary, letterSpacing:2, textShadow:`0 0 10px ${t.primary}` }}>
+              {(user.username || "PILOT").toUpperCase()}
+            </div>
+            <div style={{ fontFamily:"'Share Tech Mono',monospace", fontSize:10, color:"#444466", marginTop:3, letterSpacing:1 }}>
+              {user.email || "pilot@arena.com"}
+            </div>
+            {/* Badges */}
+            <div style={{ display:"flex", gap:6, justifyContent:"center", marginTop:10, flexWrap:"wrap" }}>
+              {["LVL 7","3,240 XP","5-DAY STREAK"].map(b => (
+                <span key={b} style={{
+                  fontFamily:"'Share Tech Mono',monospace", fontSize:9,
+                  color:t.primary, border:`1px solid ${t.primary}44`,
+                  borderRadius:4, padding:"2px 7px", letterSpacing:1,
+                  background:`${t.primary}08`,
+                }}>{b}</span>
+              ))}
+            </div>
+          </div>
+
+          {/* Server status */}
+          <div style={{
+            background:"#0a0a19", border:"1px solid #1e2040",
+            borderRadius:8, padding:"10px 12px", marginBottom:20,
+            display:"flex", alignItems:"center", gap:8,
+          }}>
+            <div style={{
+              width:7, height:7, borderRadius:"50%",
+              background: connected ? "#22c55e" : "#ef4444",
+              boxShadow:`0 0 6px ${connected ? "#22c55e" : "#ef4444"}`,
+              flexShrink:0,
+            }} />
+            <span style={{ fontFamily:"'Share Tech Mono',monospace", fontSize:10, color: connected ? "#22c55e" : "#ef4444", letterSpacing:1 }}>
+              {wsStatus}
+            </span>
+          </div>
+
+          {/* Theme selector */}
+          <div style={{ marginBottom:24 }}>
+            <div style={{ fontFamily:"'Orbitron',monospace", fontSize:10, color:"#444466", letterSpacing:2, marginBottom:12 }}>
+              ARENA THEME
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+              {Object.entries(THEMES).map(([key, val]) => (
+                <div
+                  key={key}
+                  onClick={() => setTheme(key)}
+                  style={{
+                    padding:"10px 10px",
+                    borderRadius:8,
+                    border:`1px solid ${theme === key ? val.primary : "#1e2040"}`,
+                    background: theme === key ? `${val.primary}12` : "#0a0a19",
+                    cursor:"pointer",
+                    boxShadow: theme === key ? `0 0 12px ${val.primary}33` : "none",
+                    transition:"all 0.2s",
+                  }}
+                >
+                  {/* Color preview */}
+                  <div style={{
+                    height:4, borderRadius:2,
+                    background:val.gradient,
+                    marginBottom:6,
+                    boxShadow: theme === key ? `0 0 8px ${val.primary}66` : "none",
+                  }} />
+                  <div style={{ fontFamily:"'Share Tech Mono',monospace", fontSize:9, color: theme === key ? val.primary : "#444466", letterSpacing:1 }}>
+                    {val.label}
+                  </div>
+                  {theme === key && (
+                    <div style={{ fontFamily:"'Share Tech Mono',monospace", fontSize:8, color:val.primary, marginTop:2, opacity:0.6 }}>
+                      ACTIVE
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Settings */}
+          <div style={{ marginBottom:24 }}>
+            <div style={{ fontFamily:"'Orbitron',monospace", fontSize:10, color:"#444466", letterSpacing:2, marginBottom:12 }}>
+              SETTINGS
+            </div>
+            {[
+              { label:"SOUND FX",       status:"ON"  },
+              { label:"MUSIC",          status:"ON"  },
+              { label:"SCANLINES",      status:"ON"  },
+              { label:"GHOST MODE",     status:"LVL 10" },
+            ].map((s, i) => (
+              <div key={i} style={{
+                display:"flex", justifyContent:"space-between", alignItems:"center",
+                padding:"8px 0",
+                borderBottom:"1px solid #0e0e22",
+                fontFamily:"'Share Tech Mono',monospace", fontSize:11,
+              }}>
+                <span style={{ color:"#555577", letterSpacing:1 }}>{s.label}</span>
+                <span style={{ color: s.status === "ON" ? t.primary : "#333355", fontSize:10 }}>{s.status}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Logout */}
+          {!confirmLogout ? (
+            <div
+              onClick={() => setConfirmLogout(true)}
+              style={{
+                padding:"12px 0", textAlign:"center",
+                border:"1px solid #ef444444",
+                borderRadius:8, cursor:"pointer",
+                fontFamily:"'Orbitron',monospace", fontSize:11,
+                color:"#ef4444", letterSpacing:2,
+                background:"#ef444408",
+                transition:"all 0.2s",
+              }}
+            >
+              ⏻ LOGOUT
+            </div>
+          ) : (
+            <div style={{ border:"1px solid #ef444466", borderRadius:8, padding:"14px", background:"#ef444410" }}>
+              <div style={{ fontFamily:"'Share Tech Mono',monospace", fontSize:11, color:"#ef4444", textAlign:"center", marginBottom:10, letterSpacing:1 }}>
+                CONFIRM LOGOUT?
+              </div>
+              <div style={{ display:"flex", gap:8 }}>
+                <div onClick={onLogout} style={{
+                  flex:1, padding:"9px 0", textAlign:"center",
+                  background:"#ef444422", border:"1px solid #ef444466",
+                  borderRadius:6, cursor:"pointer",
+                  fontFamily:"'Orbitron',monospace", fontSize:10,
+                  color:"#ef4444", letterSpacing:1,
+                }}>
+                  YES
+                </div>
+                <div onClick={() => setConfirmLogout(false)} style={{
+                  flex:1, padding:"9px 0", textAlign:"center",
+                  background:"#0a0a19", border:"1px solid #1e2040",
+                  borderRadius:6, cursor:"pointer",
+                  fontFamily:"'Orbitron',monospace", fontSize:10,
+                  color:"#555577", letterSpacing:1,
+                }}>
+                  CANCEL
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom version */}
+        <div style={{ padding:"12px 20px", borderTop:"1px solid #0e0e22", fontFamily:"'Share Tech Mono',monospace", fontSize:9, color:"#1a1a33", letterSpacing:1 }}>
+          KINETICORE v2.0.0 // PILOT PANEL
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────
 //  GAME DATA
 // ─────────────────────────────────────────────
 const GAMES = [
@@ -556,8 +799,8 @@ function AnimatedGrid() {
   return (
     <div style={{
       position:"fixed", inset:0, pointerEvents:"none", zIndex:0,
-      background:`linear-gradient(rgba(0,255,247,0.025) 1px, transparent 1px),
-                  linear-gradient(90deg, rgba(0,255,247,0.025) 1px, transparent 1px)`,
+      background:`linear-gradient(var(--primary-grid,rgba(0,255,247,0.025)) 1px, transparent 1px),
+                  linear-gradient(90deg, var(--primary-grid,rgba(0,255,247,0.025)) 1px, transparent 1px)`,
       backgroundSize:"60px 60px",
       maskImage:"radial-gradient(ellipse at 50% 50%, black 30%, transparent 75%)",
     }} />
@@ -574,11 +817,11 @@ function LiveStatsPanel({ poseData, connected, activeGame }) {
   return (
     <div style={{
       background:"rgba(10,10,25,0.95)",
-      border:`1px solid ${connected ? accentColor+"33" : "#ef444433"}`,
+      border:`1px solid ${connected ? "var(--primary,#00fff7)" : "#ef444433"}`,
       borderRadius:10, padding:"16px 20px",
     }}>
       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
-        <PulseOrb color={connected ? "#22c55e" : "#ef4444"} size={7} />
+        <PulseOrb color={connected ? "var(--primary,#22c55e)" : "#ef4444"} size={7} />
         <span style={{ fontFamily:"'Orbitron',monospace", fontSize:10, letterSpacing:2, color: connected ? "#22c55e" : "#ef4444" }}>
           {connected ? "POSE SERVER ONLINE" : "POSE SERVER OFFLINE"}
         </span>
@@ -659,7 +902,7 @@ function XPBar({ xp = 0, baseXp = 3240 }) {
   return (
     <div style={{ background:"rgba(10,10,25,0.9)", border:"1px solid #1e2040", borderRadius:10, padding:"16px 20px" }}>
       <div style={{ display:"flex", justifyContent:"space-between", marginBottom:7 }}>
-        <span style={{ fontFamily:"'Orbitron',monospace", fontSize:11, color:"#a855f7", letterSpacing:2 }}>PILOT LVL {level}</span>
+        <span style={{ fontFamily:"'Orbitron',monospace", fontSize:11, color:"var(--secondary,#a855f7)", letterSpacing:2 }}>PILOT LVL {level}</span>
         <span style={{ fontFamily:"'Share Tech Mono',monospace", fontSize:10, color:"#444466" }}>{total.toLocaleString()} XP</span>
       </div>
       <div style={{ background:"#0a0a19", borderRadius:4, height:7, overflow:"hidden" }}>
@@ -674,7 +917,7 @@ function XPBar({ xp = 0, baseXp = 3240 }) {
           <div key={item.label} style={{ flex:1, textAlign:"center" }}>
             <div style={{ fontSize:13 }}>{item.icon}</div>
             <div style={{ fontFamily:"'Share Tech Mono',monospace", fontSize:9, color:"#444466", marginTop:2 }}>{item.label}</div>
-            <div style={{ fontFamily:"'Orbitron',monospace", fontSize:11, color:"#00fff7", marginTop:1 }}>{item.value}</div>
+            <div style={{ fontFamily:"'Orbitron',monospace", fontSize:11, color:"var(--primary,#00fff7)", marginTop:1 }}>{item.value}</div>
           </div>
         ))}
       </div>
@@ -788,12 +1031,14 @@ function TechTab() {
 // ─────────────────────────────────────────────
 //  MAIN APP
 // ─────────────────────────────────────────────
-export default function KinetiCore() {
+export default function KinetiCore({ user = {}, onLogout }) {
   const [tab,        setTab]        = useState("arena");
   const [activeGame, setActiveGame] = useState("gravity-well");
   const [poseData,   setPoseData]   = useState(null);
   const [connected,  setConnected]  = useState(false);
   const [wsStatus,   setWsStatus]   = useState("AWAITING POSE SERVER");
+  const [theme,      setTheme]      = useState("cyan");
+  const [showPanel,  setShowPanel]  = useState(false);
 
   // ── Global styles ────────────────────────────
   useEffect(() => {
@@ -803,15 +1048,45 @@ export default function KinetiCore() {
       @keyframes orb-pulse     { 0%,100%{opacity:1;transform:scale(1)}   50%{opacity:0.4;transform:scale(0.75)} }
       @keyframes title-flicker { 0%,100%{opacity:1} 91%{opacity:1} 92%{opacity:0.4} 94%{opacity:1} 96%{opacity:0.6} }
       @keyframes float-up      { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+      @keyframes panel-in { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)} }
+      @keyframes logout-flash { 0%{opacity:1} 50%{opacity:0.3} 100%{opacity:1} }
       * { box-sizing:border-box; margin:0; padding:0; }
       body { background:#05050f; }
       ::-webkit-scrollbar       { width:4px; }
       ::-webkit-scrollbar-track { background:#050510; }
-      ::-webkit-scrollbar-thumb { background:#00fff733; border-radius:4px; }
+      /* scrollbar thumb set by theme effect */
     `;
+    style.id = "kc-main-style";
+    // Create separate scrollbar style so theme can update it
+    const sbStyle = document.createElement("style");
+    sbStyle.id = "kc-scrollbar-style";
+    sbStyle.textContent = "::-webkit-scrollbar-thumb { background: #00fff744; border-radius:4px; }";
+    document.head.appendChild(sbStyle);
     document.head.appendChild(style);
-    return () => document.head.removeChild(style);
+    return () => {
+      const s = document.getElementById("kc-main-style");
+      const sb = document.getElementById("kc-scrollbar-style");
+      if (s)  document.head.removeChild(s);
+      if (sb) document.head.removeChild(sb);
+    };
   }, []);
+
+  // ── Theme CSS variables ─────────────────────
+  useEffect(() => {
+    const t = THEMES[theme];
+    const root = document.documentElement;
+    root.style.setProperty("--primary",   t.primary);
+    root.style.setProperty("--secondary", t.secondary);
+    root.style.setProperty("--accent",    t.accent);
+    root.style.setProperty("--gradient",  t.gradient);
+    // Compute a low-alpha version for grid
+    const hex = t.primary.replace("#","");
+    const r = parseInt(hex.slice(0,2),16), g2 = parseInt(hex.slice(2,4),16), b = parseInt(hex.slice(4,6),16);
+    root.style.setProperty("--primary-grid", `rgba(${r},${g2},${b},0.028)`);
+    // Scrollbar thumb color
+    const thumb = document.getElementById("kc-scrollbar-style");
+    if (thumb) thumb.textContent = `::-webkit-scrollbar-thumb { background: ${t.primary}44; border-radius:4px; }`;
+  }, [theme]);
 
   // ── WebSocket ────────────────────────────────
   useEffect(() => {
@@ -835,21 +1110,26 @@ export default function KinetiCore() {
     <div style={{ minHeight:"100vh", background:"#05050f", color:"#e0e0ff", fontFamily:"'Share Tech Mono',monospace", position:"relative", overflowX:"hidden" }}>
       <ScanlineOverlay />
       <AnimatedGrid />
-      <div style={{ position:"fixed", top:-200, left:-200,  width:500, height:500, borderRadius:"50%", background:"radial-gradient(circle,#00fff70c,transparent 70%)", pointerEvents:"none", zIndex:0 }} />
-      <div style={{ position:"fixed", bottom:-200, right:-100, width:600, height:600, borderRadius:"50%", background:"radial-gradient(circle,#a855f70c,transparent 70%)", pointerEvents:"none", zIndex:0 }} />
+      <div style={{ position:"fixed", top:-200, left:-200,  width:500, height:500, borderRadius:"50%", background:`radial-gradient(circle,${THEMES[theme].primary}0c,transparent 70%)`, pointerEvents:"none", zIndex:0 }} />
+      <div style={{ position:"fixed", bottom:-200, right:-100, width:600, height:600, borderRadius:"50%", background:`radial-gradient(circle,${THEMES[theme].secondary}0c,transparent 70%)`, pointerEvents:"none", zIndex:0 }} />
 
       <div style={{ position:"relative", zIndex:1, maxWidth:980, margin:"0 auto", padding:"0 20px 60px" }}>
 
         {/* ── HEADER ── */}
+        <AvatarPanel
+          user={user} theme={theme} setTheme={setTheme}
+          show={showPanel} setShow={setShowPanel} onLogout={onLogout}
+          connected={connected} wsStatus={wsStatus}
+        />
         <header style={{ padding:"28px 0 20px", borderBottom:"1px solid #0e0e22" }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:16 }}>
             <div>
               <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5 }}>
-                <PulseOrb color={connected ? "#22c55e" : "#ef4444"} size={7} />
+                <PulseOrb color={connected ? "var(--primary,#22c55e)" : "#ef4444"} size={7} />
                 <span style={{ fontFamily:"'Share Tech Mono',monospace", fontSize:10, letterSpacing:2, color: connected?"#22c55e":"#ef4444" }}>{wsStatus}</span>
               </div>
               <h1 style={{ fontFamily:"'Orbitron',monospace", fontSize:"clamp(26px,6vw,50px)", fontWeight:900,
-                background:"linear-gradient(90deg,#00fff7,#a855f7,#ff00aa)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
+                background:THEMES[theme].gradient, WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
                 letterSpacing:4, animation:"title-flicker 9s infinite", lineHeight:1.1 }}>
                 KINETICORE
               </h1>
@@ -857,11 +1137,26 @@ export default function KinetiCore() {
                 THE MOTION-SENSING COMBAT ARENA
               </div>
             </div>
-            <div style={{ background:"rgba(10,10,25,0.9)", border:`1px solid ${connected?"#00fff722":"#333355"}`, borderRadius:10, padding:"12px 16px", fontFamily:"'Share Tech Mono',monospace", fontSize:11, lineHeight:2, color:"#555577" }}>
-              <div style={{ color:"#00fff7", marginBottom:3, letterSpacing:1 }}>QUICK START</div>
-              <div>1. <span style={{color:"#a855f7"}}>kineticore-env\Scripts\activate</span></div>
-              <div>2. <span style={{color:"#a855f7"}}>python pose_server.py</span></div>
-              <div>3. Stand in front of webcam &amp; move!</div>
+            <div style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
+              <div style={{ background:"rgba(10,10,25,0.9)", border:`1px solid ${connected?THEMES[theme].primary+"22":"#333355"}`, borderRadius:10, padding:"12px 16px", fontFamily:"'Share Tech Mono',monospace", fontSize:11, lineHeight:2, color:"#555577" }}>
+                <div style={{ color:THEMES[theme].primary, marginBottom:3, letterSpacing:1 }}>QUICK START</div>
+                <div>1. <span style={{color:"#a855f7"}}>kineticore-env\Scripts\activate</span></div>
+                <div>2. <span style={{color:"#a855f7"}}>python pose_server.py</span></div>
+                <div>3. Stand in front of webcam &amp; move!</div>
+              </div>
+              {/* Avatar button */}
+              <div onClick={() => setShowPanel(p => !p)} style={{
+                width:46, height:46, borderRadius:"50%",
+                border:`1px solid ${THEMES[theme].primary}66`,
+                background:`${THEMES[theme].primary}11`,
+                display:"flex", alignItems:"center", justifyContent:"center",
+                fontSize:22, cursor:"pointer",
+                boxShadow:`0 0 14px ${THEMES[theme].primary}33`,
+                transition:"all 0.2s",
+                flexShrink:0,
+              }}>
+                {user.avatar || "⚡"}
+              </div>
             </div>
           </div>
         </header>
@@ -871,11 +1166,11 @@ export default function KinetiCore() {
           {[{id:"arena",label:"COMBAT ARENA"},{id:"leaderboard",label:"LEADERBOARDS"},{id:"tech",label:"TECH STACK"}].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
               background:"none", border:"none",
-              borderBottom: tab===t.id ? "2px solid #00fff7":"2px solid transparent",
-              color: tab===t.id ? "#00fff7":"#333355",
+              borderBottom: tab===t.id ? `2px solid ${THEMES[theme].primary}`:"2px solid transparent",
+              color: tab===t.id ? THEMES[theme].primary:"#333355",
               fontFamily:"'Orbitron',monospace", fontSize:11, letterSpacing:2,
               padding:"10px 20px", cursor:"pointer",
-              textShadow: tab===t.id ? "0 0 10px #00fff7":"none",
+              textShadow: tab===t.id ? `0 0 10px ${THEMES[theme].primary}`:"none",
               transition:"all 0.2s",
             }}>{t.label}</button>
           ))}
@@ -944,9 +1239,9 @@ export default function KinetiCore() {
               </div>
 
               {/* Ghost Mode */}
-              <div style={{ background:"linear-gradient(135deg,#00fff708,#a855f708)", border:"1px solid #00fff722", borderRadius:10, padding:"14px 16px", animation:"float-up 4s ease-in-out infinite" }}>
+              <div style={{ background:`linear-gradient(135deg,var(--primary,#00fff7)08,var(--secondary,#a855f7)08)`, border:`1px solid var(--primary,#00fff7)22`, borderRadius:10, padding:"14px 16px", animation:"float-up 4s ease-in-out infinite" }}>
                 <div style={{ fontSize:20, marginBottom:6 }}>👻</div>
-                <div style={{ fontFamily:"'Orbitron',monospace", fontSize:11, color:"#00fff7", letterSpacing:2 }}>GHOST MODE</div>
+                <div style={{ fontFamily:"'Orbitron',monospace", fontSize:11, color:"var(--primary,#00fff7)", letterSpacing:2 }}>GHOST MODE</div>
                 <div style={{ fontFamily:"'Share Tech Mono',monospace", fontSize:11, color:"#555577", marginTop:4, lineHeight:1.5 }}>Race your past self. Beat your ghost for bonus XP.</div>
                 <div style={{ fontFamily:"'Share Tech Mono',monospace", fontSize:9, color:"#333355", marginTop:8 }}>UNLOCKS AT LVL 10</div>
               </div>
@@ -1003,7 +1298,7 @@ export default function KinetiCore() {
         <footer style={{ marginTop:40, paddingTop:18, borderTop:"1px solid #0e0e22", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <div style={{ fontFamily:"'Orbitron',monospace", fontSize:9, color:"#1a1a33", letterSpacing:2 }}>KINETICORE v2.0.0 // 2 GAMES LIVE</div>
           <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-            <PulseOrb color={connected?"#22c55e":"#ef4444"} size={5} />
+            <PulseOrb color={connected?`var(--primary,#22c55e)`:"#ef4444"} size={5} />
             <span style={{ fontFamily:"'Share Tech Mono',monospace", fontSize:9, color:"#222244" }}>{connected?"ALL SYSTEMS NOMINAL":"AWAITING POSE SERVER"}</span>
           </div>
         </footer>

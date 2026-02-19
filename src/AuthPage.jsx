@@ -293,9 +293,36 @@ function LoginForm({ onSwitch, onLogin }) {
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setErrors({});
     setLoading(true);
-    await new Promise(r => setTimeout(r, 1800));
+    await new Promise(r => setTimeout(r, 1200));
+
+    // Load all saved accounts
+    const accounts = JSON.parse(localStorage.getItem("kc_accounts") || "{}");
+
+    // Find by username or email (case-insensitive)
+    const key = Object.keys(accounts).find(k => {
+      const acc = accounts[k];
+      return (
+        acc.username.toLowerCase() === form.identifier.toLowerCase() ||
+        acc.email.toLowerCase()    === form.identifier.toLowerCase()
+      );
+    });
+
+    if (!key) {
+      setLoading(false);
+      setErrors({ identifier: "Pilot not found — create an account first" });
+      return;
+    }
+
+    const acc = accounts[key];
+    if (acc.password !== form.password) {
+      setLoading(false);
+      setErrors({ password: "Wrong access code" });
+      return;
+    }
+
     setLoading(false);
-    onLogin({ username: form.identifier });
+    // Pass full profile (including avatar) to parent
+    onLogin({ username: acc.username, email: acc.email, avatar: acc.avatar });
   };
 
   return (
@@ -366,9 +393,30 @@ function SignupForm({ onSwitch, onSignup }) {
 
   const handleSubmit = async () => {
     setLoading(true);
-    await new Promise(r => setTimeout(r, 2000));
+    await new Promise(r => setTimeout(r, 1500));
+
+    // Save account to localStorage so login can retrieve it
+    const accounts = JSON.parse(localStorage.getItem("kc_accounts") || "{}");
+    const key = form.username.toLowerCase();
+
+    if (accounts[key]) {
+      // Username already taken
+      setLoading(false);
+      setErrors({ username: "Callsign already taken — choose another" });
+      setStep(1);
+      return;
+    }
+
+    accounts[key] = {
+      username: form.username,
+      email:    form.email,
+      password: form.password,  // in a real app, hash this!
+      avatar:   form.avatar,
+    };
+    localStorage.setItem("kc_accounts", JSON.stringify(accounts));
+
     setLoading(false);
-    onSignup({ username: form.username, avatar: form.avatar });
+    onSignup({ username: form.username, email: form.email, avatar: form.avatar });
   };
 
   return (
@@ -504,7 +552,7 @@ function SuccessScreen({ user, mode, onEnter }) {
   useEffect(() => {
     const timer = setInterval(() => {
       setCount(c => {
-        if (c <= 1) { clearInterval(timer); onEnter(); return 0; }
+        if (c <= 1) { clearInterval(timer); onEnter(user); return 0; }
         return c - 1;
       });
     }, 1000);
@@ -581,7 +629,7 @@ export default function AuthPage({ onEnter }) {
     return () => document.head.removeChild(style);
   }, []);
 
-  const handleLogin  = (u) => setUser({ ...u, avatar: "⚡", _mode: "login"  });
+  const handleLogin  = (u) => setUser({ ...u, _mode: "login" });
   const handleSignup = (u) => setUser({ ...u, _mode: "signup" });
 
   return (
